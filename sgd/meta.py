@@ -106,18 +106,33 @@ class Meta(IMDb):
         self.ep = 0
         self.se = 0
 
-        self.id_split = stream_id.split("%3A")
+        import urllib.parse, requests
+        decoded_id = urllib.parse.unquote(stream_id)
+        self.id_split = decoded_id.split(":")
         self.type = stream_type
         self.stream_type = stream_type
 
-        self.id = self.id_split[0]
-        if stream_type == "series":
-            self.ep = str(self.id_split[-1]).zfill(2)
-            self.se = str(self.id_split[-2]).zfill(2)
+        if self.id_split[0] == "tmdb" and len(self.id_split) >= 2:
+            self.id = f"tmdb:{self.id_split[1]}"
+        else:
+            self.id = self.id_split[0]
 
-        cached = Json(f"{self.id}.json")
+        if stream_type == "series":
+            self.ep = str(self.id_split[-1]).zfill(2) if len(self.id_split) >= 3 else "01"
+            self.se = str(self.id_split[-2]).zfill(2) if len(self.id_split) >= 3 else "01"
+
+        cached = Json(f"{self.id.replace(':', '_')}.json")
         if not cached.contents:
-            IMDb.__init__(self)
+            if self.id.startswith("tmdb:"):
+                tmdb_num = self.id.split(":")[1]
+                r = requests.get(f"https://tmdb-addon.strem.fun/meta/{stream_type}/tmdb:{tmdb_num}.json").json()
+                meta = r.get("meta", {})
+                if meta.get("name"):
+                    self.titles.append(ut.sanitize(meta["name"]))
+                if meta.get("releaseInfo"):
+                    self.year = str(meta["releaseInfo"]).split("-")[0]
+            else:
+                IMDb.__init__(self)
             cached.contents.update(self.__dict__)
             cached.save()
         else:
